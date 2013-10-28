@@ -16,24 +16,9 @@ use lib "$FindBin::Bin/lib";
 
 use Data::Dumper;
 
-my $V = '1.1';
+my $V = '1.2';
 
-my $c = Config::YAML->new(
-  config       => 'config.yml',
-  irc_trigger  => '!pupp',
-  irc_nick     => 'Anna',
-  irc_username => 'anna',
-  irc_name     => 'Anna, perl logging bot V',
-  irc_server   => 'uk.fef.net',
-  irc_port     => 6667,
-  dbhost       => 'localhost',
-  dbuser       => 'anna',
-  dbpass       => 'dilldall123',
-  dbport       => 5432,
-  dbname       => 'anna',
-  dbtype       => 'Pg',
-  debug        => 1,
-);
+my $c = Config::YAML->new( config => 'config.yml' );
 
 my $db =
   DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
@@ -52,6 +37,8 @@ POE::Session->create(
     irc_001          => \&bot_connected,
     irc_public       => \&channel_msg,
     irc_msg          => \&private_message,
+    irc_ctcp_version => \&bot_ctcp_version,
+    irc_ctcp_ping    => \&bot_ctcp_ping,
   }
 );
 
@@ -82,13 +69,27 @@ sub bot_connect {
 # What to do when the bot is connected to the IRC server.
 
 sub bot_connected {
-  $irc->yield( join => '#bot-test' );
+  $irc->yield( join => $c->{irc_channel} );
 }
 
 # Tell the bot to reconnect after 60 seconds.
 
 sub bot_reconnect {
-  $poe_kernel->delay( connect => 60 );    # $poe_kernel->delay delays the connect event by 60 seconds.
+  $poe_kernel->delay( connect => 60 ); # 60 seconds delay before reconnecting..
+}
+
+# Reply to CTCP version.
+
+sub bot_ctcp_version {
+  my $who = ( split( /!/, $_[ARG0] ) )[0];
+  $irc->yield( ctcpreply => $who => 'VERSION ' . 'Anna v' . $V );
+}
+
+# Reply to CTCP ping.
+
+sub bot_ctcp_ping {
+  my $who = ( split( /!/, $_[ARG0] ) )[0];
+  $irc->yield( ctcpreply => $who => 'PING ' . $_[ARG2] );
 }
 
 # Handles channel messages.
@@ -115,15 +116,15 @@ sub handle_triggercmd {
 
   if ( scalar @cmds eq 1 ) {    # grab single url and post to channel
     my $result = db_get_url();
-    $irc->yield( privmsg => $channel, "$username: $result->{urls} ($result->{id_number})" );
+    $irc->yield( privmsg => $channel, "$username: $result->{url} ($result->{id_number})" );
   }
   else {
-    if ( $cmds[1] =~ m/total/i ) {
-      $irc->yield( privmsg => $channel, db_get_total() . " links in database." );
+    if ( $cmds[1] =~ m/^total$/i ) {
+      $irc->yield( privmsg => $channel, db_get_total() . " active links in database." );
     }
-    elsif ( $cmds[1] =~ m/report/i ) {    #trigger for report
-      if ( $cmds[2] =~ m/\d+/i ) {        #verify third arg is number.
-                                          #$irc->yield(privmsg => $where, db_mark_reported());
+    elsif ( $cmds[1] =~ /^report$/i ) {    #trigger for report
+      if ( $cmds[2] =~ /^\d+$/ ) {        #verify third arg is number.
+        db_mark_reported($cmds[2])
       }
     }
   }
@@ -147,6 +148,7 @@ sub db_get_total {
 
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
+  $db->do("insert into logger(nickname,url,channel) values ($user,$url,$channel)");
 }
 
 $poe_kernel->run();
