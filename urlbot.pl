@@ -148,7 +148,9 @@ sub db_get_total {
 
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
-  $db->do("insert into logger(nickname,url,channel) values ($user,$url,$channel)");
+  my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
+  $pst->execute($user,$url,$channel) or die $DBI::Errstr;
+  $pst->finish();
 }
 
 $poe_kernel->run();
