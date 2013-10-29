@@ -4,6 +4,7 @@ package No::Jonis::IRC::Logger;
 # This is written entirely in YOLOCODE, if you were wondering
 use strict;
 use warnings;
+use utf8;
 
 use FindBin;
 use Config::YAML;
@@ -124,7 +125,7 @@ sub handle_triggercmd {
     }
     elsif ( $cmds[1] =~ /^report$/i ) {    #trigger for report
       if ( $cmds[2] =~ /^\d+$/ ) {        #verify third arg is number.
-        db_mark_reported($cmds[2])
+        &db_mark_reported($cmds[2]);
       }
     }
   }
@@ -137,7 +138,7 @@ sub db_get_url {
 }
 
 sub db_mark_reported {
-  my $id = $_;
+  my $id = @_;
   $db->do("update logger set reported = true where id_number = $id");
 }
 
@@ -149,7 +150,7 @@ sub db_get_total {
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
   my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
-  $pst->execute($user,$url,$channel) or die $DBI::errstr;
+  $pst->execute($user,$url,$channel) or print $DBI::errstr;
   $pst->finish();
 }
 
