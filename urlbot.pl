@@ -19,7 +19,7 @@ use Data::Dumper;
 
 my $V = '1.2';
 
-my $c = Config::YAML->new( config => 'config.yml' );
+my $c = Config::YAML->new( config => './conf/config.yml' );
 
 my $db =
   DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
@@ -139,7 +139,9 @@ sub db_get_url {
 
 sub db_mark_reported {
   my $id = @_;
-  $db->do("update logger set reported = true where id_number = $id");
+  my $pst = $db->prepare("update logger set reported = true where id_number = ?");
+  $pst->execute($id) or print STDERR $DBI::errstr;
+  $pst->finish();
 }
 
 sub db_get_total {
