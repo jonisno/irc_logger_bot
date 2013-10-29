@@ -1,0 +1,14 @@
+---
+dbhost: hostname
+dbname: database_name
+dbpass: database_password
+dbport: database_port
+dbtype: database_type
+dbuser: database_user
+debug: 1 # 1 to output text, 0 to not.
+irc_name: "Sample IRC name text"
+irc_nick: bot_nick
+irc_port: irc_server_port
+irc_server: irc.example.com
+irc_trigger: '!trigger'
+irc_username: account_username
