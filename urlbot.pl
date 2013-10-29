@@ -76,7 +76,7 @@ sub bot_connected {
 # Tell the bot to reconnect after 60 seconds.
 
 sub bot_reconnect {
-  $poe_kernel->delay( connect => 60 ); # 60 seconds delay before reconnecting..
+  $poe_kernel->delay( connect => 60 );    # 60 seconds delay before reconnecting..
 }
 
 # Reply to CTCP version.
@@ -124,8 +124,8 @@ sub handle_triggercmd {
       $irc->yield( privmsg => $channel, db_get_total() . " active links in database." );
     }
     elsif ( $cmds[1] =~ /^report$/i ) {    #trigger for report
-      if ( $cmds[2] =~ /^\d+$/ ) {        #verify third arg is number.
-        &db_mark_reported($cmds[2]);
+      if ( $cmds[2] =~ /^\d+$/ ) {         #verify third arg is number.
+        &db_mark_reported( $cmds[2] );
       }
     }
   }
@@ -138,7 +138,7 @@ sub db_get_url {
 }
 
 sub db_mark_reported {
-  my $id = @_;
+  my $id  = @_;
   my $pst = $db->prepare("update logger set reported = true where id_number = ?");
   $pst->execute($id) or print STDERR $DBI::errstr;
   $pst->finish();
@@ -152,7 +152,7 @@ sub db_get_total {
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
   my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
-  $pst->execute($user,$url,$channel) or print $DBI::errstr;
+  $pst->execute( $user, $url, $channel ) or print $DBI::errstr;
   $pst->finish();
 }
 
