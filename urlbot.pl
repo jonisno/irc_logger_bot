@@ -4,7 +4,6 @@ package No::Jonis::IRC::Logger;
 # This is written entirely in YOLOCODE, if you were wondering
 use strict;
 use warnings;
-use utf8;
 
 use FindBin;
 use Config::YAML;
@@ -17,13 +16,19 @@ use LWP::UserAgent;
 use lib "$FindBin::Bin/lib";
 use Data::Dumper;
 
-my $V = '1.2';
+# Current bot version
+my $V = '1.2.1';
+
+# Load config file.
 my $c = Config::YAML->new( config => './conf/config.yml' );
 
 my $db =
   DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
   or die $DBI::errstr;
+
 my $ua = LWP::UserAgent->new;
+$ua->timeout(5);
+
 my ($irc) = POE::Component::IRC->spawn();
 
 
