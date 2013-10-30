@@ -12,19 +12,18 @@ use POE;
 use POE::Component::IRC;
 use POE::Component::IRC::Plugin::NickReclaim;
 use DBI;
+use LWP::UserAgent;
 
 use lib "$FindBin::Bin/lib";
-
 use Data::Dumper;
 
 my $V = '1.2';
-
 my $c = Config::YAML->new( config => './conf/config.yml' );
 
 my $db =
   DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
   or die $DBI::errstr;
-
+my $ua = LWP::UserAgent->new;
 my ($irc) = POE::Component::IRC->spawn();
 
 
@@ -116,7 +115,15 @@ sub handle_triggercmd {
   my ( $username, $channel, @cmds ) = @_;
 
   if ( scalar @cmds eq 1 ) {    # grab single url and post to channel
-    my $result = db_get_url();
+    my $result   = db_get_url();
+    my $response = $ua->get( $result->{url} );
+
+    while ( $response->is_error ) {
+      db_mark_reported( $result->{id_number} );
+      $result   = db_get_url();
+      $response = $ua->get( $result->{url} );
+    }
+
     $irc->yield( privmsg => $channel, "$username: $result->{url} ($result->{id_number})" );
   }
   else {
