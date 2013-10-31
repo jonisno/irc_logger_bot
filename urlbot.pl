@@ -120,8 +120,11 @@ sub channel_msg {
   my $userhost = ( split /!/, $who )[1];
   $channel = $channel->[0];
 
-  if ( $msg =~ m/(https?:\/\/[a-z0-9\.-]+[a-z]{2,6}([\/\w+-_&\?]*))/i ) {
-    db_insert_url( $username, $channel, $1 );
+  if ( $msg =~ m/(https?:\/\/[a-z0-9\.-]+[a-z]{2,6}([\/\w+-_&\?=]*))/i ) {
+    my $link = $1;
+    my $domain = $link;
+    $domain =~ s/.*:\/\/([^\/]*)/$1/;
+    db_insert_url( $username, $channel, $link, $domain );
   }
 
   elsif ( ( split / /, $msg )[0] eq "$c->{irc_trigger}" ) {
@@ -193,9 +196,9 @@ sub db_get_top_domains {
 }
 
 sub db_insert_url {
-  my ( $user, $channel, $url ) = @_;
-  my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
-  $pst->execute( $user, $url, $channel ) or $log->logdie("DB: Could not add $url to database. Bye!");
+  my ( $user, $channel, $url, $domain ) = @_;
+  my $pst = $db->prepare("insert into logger (nickname,url,channel,domain) select ?,?,?,? where not exists (select 1 from logger where url = ?)");
+  $pst->execute( $user, $url, $channel, $domain, $url ) or $log->warn("DB: could not insert $url . Bye!");
   $pst->finish();
 }
 
