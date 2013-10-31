@@ -33,7 +33,7 @@ my $c = Config::YAML->new( config => './conf/config.yml' );
 #Open DB connection.
 
 my $db =
-  DBI->connect( "DBI:" . $c->{dbtype} . ":daabase=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
+  DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
   or $log->logdie($DBI::errstr);
 
 # Initialize useragent.
@@ -79,7 +79,7 @@ sub bot_connect {
       Port     => $c->{irc_port},
       Debug    => $c->{debug},
     }
-  );
+  )
 }
 
 # What to do when the bot is connected to the IRC server.
@@ -149,7 +149,13 @@ sub handle_triggercmd {
   }
   else {
     if ( $cmds[1] =~ m/^total$/i ) {
+      my @topdomains = @{ db_get_top_domains() };
+      my $domainstring = "Top domains: ";
+      foreach (@topdomains) {
+        $domainstring = $domainstring . "@$_[0] / @$_[1] ";
+      }
       $irc->yield( privmsg => $channel, db_get_total() . " active links in database." );
+      $irc->yield( privmsg => $channel, $domainstring );
     }
     elsif ( $cmds[1] =~ /^report$/i ) {    #trigger for report
       if ( $cmds[2] =~ /^\d+$/ ) {         #verify third arg is number.
@@ -162,27 +168,34 @@ sub handle_triggercmd {
 # It's DB all the way down.
 
 sub db_get_url {
-  return $db->selectrow_hashref("select * from logger order by random()*(select count(*) from logger) limit 1")
-    or $log->logdie("DB connection gone, could not get row from database. Bye!");
+  return $db->selectrow_hashref("select * from logger where reported = false order by random() limit 1")
+    or $log->logdie("DB: could not get row from database. Bye!");
 }
 
 sub db_mark_reported {
   my $id  = @_;
   my $pst = $db->prepare("update logger set reported = true where id_number = ?");
-  $pst->execute($id) or $log->logdie("DB connection gone, could not disable $id, bye!");
+  $pst->execute($id) or $log->logdie("DB, could not disable $id. Bye!");
   $pst->finish();
 }
 
 sub db_get_total {
   my $total = $db->selectrow_hashref("select count(*) from logger where reported = false")
-    or $log->logdie("DB connection gone, could not get count from database, bye!");
+    or $log->logdie("DB: could not get count from database. Bye!");
   return $total->{count};
+}
+
+sub db_get_top_domains {
+  my $topdomains = $db->selectall_arrayref(
+    "select domain, count(*) from logger where reported = false group by domain order by count desc limit 5")
+    or $log->logdie("DB: could not get top domains. Bye!");
+  return $topdomains;
 }
 
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
   my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
-  $pst->execute( $user, $url, $channel ) or $log->logdie("DB connection gone. Could not add $url to database, bye!");
+  $pst->execute( $user, $url, $channel ) or $log->logdie("DB: Could not add $url to database. Bye!");
   $pst->finish();
 }
 
