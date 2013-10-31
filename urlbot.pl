@@ -12,25 +12,35 @@ use POE::Component::IRC;
 use POE::Component::IRC::Plugin::NickReclaim;
 use DBI;
 use LWP::UserAgent;
-
+use Log::Log4perl;
 use lib "$FindBin::Bin/lib";
+
 use Data::Dumper;
 
 # Current bot version
+
 my $V = '1.2.1';
 
+# start logging
+
+Log::Log4perl::init('./conf/log.conf');
+my $log = Log::Log4perl->get_logger();
+
 # Load config file.
+
 my $c = Config::YAML->new( config => './conf/config.yml' );
 
-my $db =
-  DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
-  or die $DBI::errstr;
+#Open DB connection.
 
+my $db =
+  DBI->connect( "DBI:" . $c->{dbtype} . ":daabase=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
+  or $log->logdie($DBI::errstr);
+
+# Initialize useragent.
 my $ua = LWP::UserAgent->new;
 $ua->timeout(5);
 
 my ($irc) = POE::Component::IRC->spawn();
-
 
 POE::Session->create(
   inline_states => {
@@ -59,6 +69,7 @@ sub bot_start {
 # Connect to IRC.
 
 sub bot_connect {
+  $log->info("Attempting to connect to IRC server.");
   $irc->yield(
     connect => {
       Nick     => $c->{irc_nick},
@@ -74,12 +85,14 @@ sub bot_connect {
 # What to do when the bot is connected to the IRC server.
 
 sub bot_connected {
+  $log->info("Bot connected, attempting to join channels.");
   $irc->yield( join => $c->{irc_channel} );
 }
 
 # Tell the bot to reconnect after 60 seconds.
 
 sub bot_reconnect {
+  $log->info("Bot disconnected, attempting reconnect in 60 seconds");
   $poe_kernel->delay( connect => 60 );    # 60 seconds delay before reconnecting..
 }
 
@@ -87,6 +100,7 @@ sub bot_reconnect {
 
 sub bot_ctcp_version {
   my $who = ( split( /!/, $_[ARG0] ) )[0];
+  $log->info("$who sent a CTCP VERSION request.");
   $irc->yield( ctcpreply => $who => 'VERSION ' . 'Anna v' . $V );
 }
 
@@ -94,6 +108,7 @@ sub bot_ctcp_version {
 
 sub bot_ctcp_ping {
   my $who = ( split( /!/, $_[ARG0] ) )[0];
+  $log->info("$who sent CTCP ping request.");
   $irc->yield( ctcpreply => $who => 'PING ' . $_[ARG2] );
 }
 
@@ -124,6 +139,7 @@ sub handle_triggercmd {
     my $response = $ua->get( $result->{url} );
 
     while ( $response->is_error ) {
+      $log->info("$result->{id_number} marked as invalid URL due to HTTP response code");
       db_mark_reported( $result->{id_number} );
       $result   = db_get_url();
       $response = $ua->get( $result->{url} );
@@ -146,25 +162,27 @@ sub handle_triggercmd {
 # It's DB all the way down.
 
 sub db_get_url {
-  return $db->selectrow_hashref("select * from logger order by random()*(select count(*) from logger) limit 1");
+  return $db->selectrow_hashref("select * from logger order by random()*(select count(*) from logger) limit 1")
+    or $log->logdie("DB connection gone, could not get row from database. Bye!");
 }
 
 sub db_mark_reported {
   my $id  = @_;
   my $pst = $db->prepare("update logger set reported = true where id_number = ?");
-  $pst->execute($id) or print STDERR $DBI::errstr;
+  $pst->execute($id) or $log->logdie("DB connection gone, could not disable $id, bye!");
   $pst->finish();
 }
 
 sub db_get_total {
-  my $total = $db->selectrow_hashref("select count(*) from logger where reported = false");
+  my $total = $db->selectrow_hashref("select count(*) from logger where reported = false")
+    or $log->logdie("DB connection gone, could not get count from database, bye!");
   return $total->{count};
 }
 
 sub db_insert_url {
   my ( $user, $channel, $url ) = @_;
   my $pst = $db->prepare("insert into logger (nickname,url,channel) values (?,?,?)");
-  $pst->execute( $user, $url, $channel ) or print $DBI::errstr;
+  $pst->execute( $user, $url, $channel ) or $log->logdie("DB connection gone. Could not add $url to database, bye!");
   $pst->finish();
 }
 

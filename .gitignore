@@ -1,3 +1,4 @@
-  .gitignore
+.gitignore
 config.yml
 *.swp
+bot.log
