@@ -5,7 +5,6 @@ package No::Jonis::IRC::Logger;
 use strict;
 use warnings;
 
-use FindBin;
 use Config::YAML;
 use POE;
 use POE::Component::IRC;
@@ -13,13 +12,15 @@ use POE::Component::IRC::Plugin::NickReclaim;
 use DBI;
 use LWP::UserAgent;
 use Log::Log4perl;
-use lib "$FindBin::Bin/lib";
 
-use Data::Dumper;
+#For future use.
+
+#use FindBin;
+#use lib "$FindBin::Bin/lib";
 
 # Current bot version
 
-my $V = '1.2.1';
+my $V = '1.2.2';
 
 # start logging
 
@@ -79,7 +80,7 @@ sub bot_connect {
       Port     => $c->{irc_port},
       Debug    => $c->{debug},
     }
-  )
+  );
 }
 
 # What to do when the bot is connected to the IRC server.
@@ -121,7 +122,7 @@ sub channel_msg {
   $channel = $channel->[0];
 
   if ( $msg =~ m/(https?:\/\/[a-z0-9\.-]+[a-z]{2,6}([\/\w+-_&\?=]*))/i ) {
-    my $link = $1;
+    my $link   = $1;
     my $domain = $link;
     $domain =~ s/.*:\/\/([^\/]*)/$1/;
     db_insert_url( $username, $channel, $link, $domain );
@@ -135,7 +136,7 @@ sub channel_msg {
 # This handles all the trigger commands.
 
 sub handle_triggercmd {
-  my ( $username, $channel, @cmds ) = @_;
+  my ( $who, $channel, @cmds ) = @_;
 
   if ( scalar @cmds eq 1 ) {    # grab single url and post to channel
     my $result   = db_get_url();
@@ -148,11 +149,11 @@ sub handle_triggercmd {
       $response = $ua->get( $result->{url} );
     }
 
-    $irc->yield( privmsg => $channel, "$username: $result->{url} ($result->{id_number})" );
+    $irc->yield( privmsg => $channel, "$who: $result->{url} ($result->{id_number})" );
   }
   else {
     if ( $cmds[1] =~ m/^total$/i ) {
-      my @topdomains = @{ db_get_top_domains() };
+      my @topdomains   = @{ db_get_top_domains() };
       my $domainstring = "Top domains: ";
       foreach (@topdomains) {
         $domainstring = $domainstring . "@$_[0] / @$_[1] ";
@@ -165,6 +166,23 @@ sub handle_triggercmd {
         &db_mark_reported( $cmds[2] );
       }
     }
+    elsif ( $cmds[1] =~ /^(help|commands)$/i ) {
+      $irc->yield(
+        privmsg => $channel,
+        "$who: Available commands are $c->{irc_trigger}, "
+          . "$c->{irc_trigger} total for stats, $c->{irc_trigger} report NUMBER "
+          . "to report a dead link or $c->{irc_trigger} WORD to search for a link."
+      );
+    }
+    else {
+      my $result = &db_search_url( $cmds[1] );
+      if ( defined $result ) {
+        $irc->yield( privmsg => $channel, "$who: $result->{url} ($result->{id_number})" );
+      }
+      else {
+        $irc->yield( privmsg => $channel, "$who: Sorry, nothing found for $cmds[1]" );
+      }
+    }
   }
 }
 
@@ -173,13 +191,6 @@ sub handle_triggercmd {
 sub db_get_url {
   return $db->selectrow_hashref("select * from logger where reported = false order by random() limit 1")
     or $log->logdie("DB: could not get row from database. Bye!");
-}
-
-sub db_mark_reported {
-  my $id  = @_;
-  my $pst = $db->prepare("update logger set reported = true where id_number = ?");
-  $pst->execute($id) or $log->logdie("DB, could not disable $id. Bye!");
-  $pst->finish();
 }
 
 sub db_get_total {
@@ -197,9 +208,27 @@ sub db_get_top_domains {
 
 sub db_insert_url {
   my ( $user, $channel, $url, $domain ) = @_;
-  my $pst = $db->prepare("insert into logger (nickname,url,channel,domain) select ?,?,?,? where not exists (select 1 from logger where url = ?)");
-  $pst->execute( $user, $url, $channel, $domain, $url ) or $log->warn("DB: could not insert $url . Bye!");
+  my $pst = $db->prepare(
+"insert into logger (nickname,url,channel,domain) select ?,?,?,? where not exists (select 1 from logger where url = ?)"
+  );
+  $pst->execute( $user, $url, $channel, $domain, $url ) or $log->logdie("DB: could not insert $url . Bye!");
   $pst->finish();
+}
+
+sub db_mark_reported {
+  my ($id) = @_;
+  my $pst = $db->prepare("update logger set reported = true where id_number = ?");
+  $pst->execute($id) or $log->logdie("DB, could not disable $id. Bye!");
+  $pst->finish();
+}
+
+sub db_search_url {
+  my ($search) = @_;
+  my $pst = $db->prepare("select url,id_number from logger where url ~ ? order by random() limit 1");
+  $pst->execute($search);
+  my $row = $pst->fetchrow_hashref;
+  $pst->finish();
+  return $row;
 }
 
 $poe_kernel->run();
