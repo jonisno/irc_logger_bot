@@ -35,7 +35,7 @@ my $c = Config::YAML->new( config => './conf/config.yml' );
 
 my $db =
   DBI->connect( "DBI:" . $c->{dbtype} . ":database=" . $c->{dbname}, $c->{dbuser}, $c->{dbpass}, { AutoCommit => 1 } )
-  or $log->logdie($DBI::errstr);
+  || $log->logdie($DBI::errstr);
 
 # Initialize useragent.
 my $ua = LWP::UserAgent->new;
@@ -163,7 +163,7 @@ sub handle_triggercmd {
     }
     elsif ( $cmds[1] =~ /^report$/i ) {    #trigger for report
       if ( $cmds[2] =~ /^\d+$/ ) {         #verify third arg is number.
-        &db_mark_reported( $cmds[2] );
+        db_mark_reported( $cmds[2] );
       }
     }
     elsif ( $cmds[1] =~ /^(help|commands)$/i ) {
@@ -190,19 +190,19 @@ sub handle_triggercmd {
 
 sub db_get_url {
   return $db->selectrow_hashref("select * from logger where reported = false order by random() limit 1")
-    or $log->logdie("DB: could not get row from database. Bye!");
+    || $log->logdie("DB: could not get row from database. Bye!");
 }
 
 sub db_get_total {
   my $total = $db->selectrow_hashref("select count(*) from logger where reported = false")
-    or $log->logdie("DB: could not get count from database. Bye!");
+    || $log->logdie("DB: could not get count from database. Bye!");
   return $total->{count};
 }
 
 sub db_get_top_domains {
   my $topdomains = $db->selectall_arrayref(
     "select domain, count(*) from logger where reported = false group by domain order by count desc limit 5")
-    or $log->logdie("DB: could not get top domains. Bye!");
+    || $log->logdie("DB: could not get top domains. Bye!");
   return $topdomains;
 }
 
@@ -211,21 +211,21 @@ sub db_insert_url {
   my $pst = $db->prepare(
 "insert into logger (nickname,url,channel,domain) select ?,?,?,? where not exists (select 1 from logger where url = ?)"
   );
-  $pst->execute( $user, $url, $channel, $domain, $url ) or $log->logdie("DB: could not insert $url . Bye!");
+  $pst->execute( $user, $url, $channel, $domain, $url ) || $log->logdie("DB: could not insert $url . Bye!");
   $pst->finish();
 }
 
 sub db_mark_reported {
   my ($id) = @_;
   my $pst = $db->prepare("update logger set reported = true where id_number = ?");
-  $pst->execute($id) or $log->logdie("DB, could not disable $id. Bye!");
+  $pst->execute($id) || $log->logdie("DB, could not disable $id. Bye!");
   $pst->finish();
 }
 
 sub db_search_url {
   my ($search) = @_;
   my $pst = $db->prepare("select url,id_number from logger where url ~ ? order by random() limit 1");
-  $pst->execute($search);
+  $pst->execute($search) || $log->logdie("DB, could no search. Bye!");
   my $row = $pst->fetchrow_hashref;
   $pst->finish();
   return $row;
